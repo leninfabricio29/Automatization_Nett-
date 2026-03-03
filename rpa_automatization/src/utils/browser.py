@@ -13,6 +13,7 @@ class BrowserManager:
     def __init__(self):
         """Initialize browser manager with settings."""
         self.settings = get_settings()
+        self.playwright = None
         self.browser: Browser = None
         self.context: BrowserContext = None
         self.page: Page = None
@@ -47,18 +48,26 @@ class BrowserManager:
             
         except Exception as e:
             print(f"❌ Browser initialization error: {e}")
+            await self.close()
             raise
     
     async def close(self) -> None:
         """Close browser and clean up resources."""
         try:
-            if self.page:
+            if self.page and not self.page.is_closed():
                 await self.page.close()
+
             if self.context:
                 await self.context.close()
+
             if self.browser:
                 await self.browser.close()
+
+            if self.playwright:
+                await self.playwright.stop()
+
             print("✅ Browser closed successfully")
+
         except Exception as e:
             print(f"❌ Error closing browser: {e}")
     

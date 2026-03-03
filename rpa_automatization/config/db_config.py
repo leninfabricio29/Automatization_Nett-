@@ -1,110 +1,97 @@
 """
-Database configuration and connection setup.
-Uses SQLAlchemy with PostgreSQL driver (psycopg).
+MongoDB configuration and connection setup.
+Uses PyMongo driver.
+Compatible MongoDB Compass.
 """
 
-from sqlalchemy import create_engine, Engine
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import QueuePool
-from contextlib import contextmanager
+from pymongo import MongoClient
+from pymongo.database import Database
+
 from typing import Generator
 
 from config.settings import get_settings
 
 
 class DatabaseConfig:
-    """Database configuration and connection manager."""
-    
-    _engine: Engine = None
-    _session_factory: sessionmaker = None
-    
+    """MongoDB configuration and connection manager."""
+
+    _client: MongoClient = None
+    _database: Database = None
+
     @classmethod
-    def initialize(cls) -> Engine:
+    def initialize(cls) -> MongoClient:
         """
-        Initialize database engine and session factory.
-        
+        Initialize MongoDB client and database.
+
         Returns:
-            Engine: SQLAlchemy engine instance
+            MongoClient: MongoDB client instance
         """
-        if cls._engine is None:
+        if cls._client is None:
             settings = get_settings()
-            
-            cls._engine = create_engine(
-                settings.database_url,
-                poolclass=QueuePool,
-                pool_size=settings.db_pool_size,
-                max_overflow=settings.db_max_overflow,
-                echo=settings.is_debug,  # Log SQL queries in debug mode
-                connect_args={
-                    "connect_timeout": 10,
-                    "options": "-c statement_timeout=30000"
-                }
+
+            cls._client = MongoClient(
+                settings.mongodb_uri,          # misma URI que se usa en Compass
+                serverSelectionTimeoutMS=5000,
+                connectTimeoutMS=10000,
+                maxPoolSize=settings.db_pool_size,
+                retryWrites=True
             )
-            
-            cls._session_factory = sessionmaker(
-                bind=cls._engine,
-                expire_on_commit=False,
-                autoflush=False
-            )
-        
-        return cls._engine
-    
+
+            cls._database = cls._client[settings.mongodb_database]
+
+        return cls._client
+
     @classmethod
-    def get_engine(cls) -> Engine:
-        """Get the database engine instance."""
-        if cls._engine is None:
+    def get_client(cls) -> MongoClient:
+        """Get MongoDB client."""
+        if cls._client is None:
             cls.initialize()
-        return cls._engine
-    
+        return cls._client
+
     @classmethod
-    def get_session_factory(cls) -> sessionmaker:
-        """Get the session factory."""
-        if cls._session_factory is None:
+    def get_database(cls) -> Database:
+        """Get MongoDB database."""
+        if cls._database is None:
             cls.initialize()
-        return cls._session_factory
-    
+        return cls._database
+
     @classmethod
-    @contextmanager
-    def get_session(cls) -> Generator[Session, None, None]:
+    
+    def get_db(cls) -> Generator[Database, None, None]:
         """
-        Context manager for database sessions.
-        
+        Context manager for MongoDB access.
+
         Usage:
-            with DatabaseConfig.get_session() as session:
-                # Use session
-                pass
+            with DatabaseConfig.get_db() as db:
+                collection = db["users"]
+                collection.insert_one({...})
         """
-        session = cls.get_session_factory()()
+        db = cls.get_database()
         try:
-            yield session
-            session.commit()
+            yield db
         except Exception:
-            session.rollback()
             raise
-        finally:
-            session.close()
-    
+
     @classmethod
     def health_check(cls) -> bool:
         """
-        Test database connection.
-        
+        Test MongoDB connection.
+
         Returns:
             bool: True if connection is successful
         """
         try:
-            engine = cls.get_engine()
-            with engine.connect() as connection:
-                connection.execute("SELECT 1")
+            client = cls.get_client()
+            client.admin.command("ping")
             return True
         except Exception as e:
-            print(f"Database health check failed: {e}")
+            print(f"MongoDB health check failed: {e}")
             return False
-    
+
     @classmethod
     def dispose(cls) -> None:
-        """Close all database connections."""
-        if cls._engine is not None:
-            cls._engine.dispose()
-            cls._engine = None
-            cls._session_factory = None
+        """Close MongoDB connection."""
+        if cls._client is not None:
+            cls._client.close()
+            cls._client = None
+            cls._database = None

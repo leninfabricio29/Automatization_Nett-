@@ -60,7 +60,7 @@ class AuthManager:
             await login_button.click()
             
             # Wait for navigation after login
-            await page.wait_for_load_state("networkidle")
+            #await page.wait_for_load_state("networkidle")
             
             # Check if login was successful (URL changed or success element present)
             if page.url == self.login_url:
@@ -136,3 +136,4 @@ class AuthManager:
         if session_file.exists():
             session_file.unlink()
             print(f"✅ Session cleared: {session_file}")
+
